@@ -1,0 +1,58 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Sora:wght@600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+[data-theme="dark"],
+.dark {
+  color-scheme: dark;
+  --watchly-bg: #0f0f0f;
+  --watchly-secondary: #1a1a1a;
+  --watchly-accent: #00a8ff;
+  --watchly-text-primary: #ffffff;
+  --watchly-text-secondary: #b3b3b3;
+}
+
+[data-theme="light"],
+.light {
+  color-scheme: light;
+  --watchly-bg: #eef3f8;
+  --watchly-secondary: #ffffff;
+  --watchly-accent: #0079c2;
+  --watchly-text-primary: #0f1720;
+  --watchly-text-secondary: #4a5968;
+}
+
+html {
+  transition: color-scheme 300ms ease;
+}
+
+body {
+  margin: 0;
+  font-family: "Manrope", sans-serif;
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--watchly-accent) 18%, transparent), transparent 35%),
+    radial-gradient(circle at 80% 0%, color-mix(in srgb, var(--watchly-text-primary) 8%, transparent), transparent 40%),
+    var(--watchly-bg);
+  color: var(--watchly-text-primary);
+}
+
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 260ms ease, transform 260ms ease;
+}
+
+.page-fade-enter-from,
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
