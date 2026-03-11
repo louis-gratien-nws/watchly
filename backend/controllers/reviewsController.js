@@ -1,6 +1,7 @@
 ﻿const Review = require("../models/Review");
 const User = require("../models/User");
 const Activity = require("../models/Activity");
+const Notification = require("../models/Notification");
 const { calculateAchievements } = require("../utils/calculateAchievements");
 
 const createReview = async (req, res, next) => {
@@ -35,6 +36,24 @@ const createReview = async (req, res, next) => {
       reviewText,
       tags
     });
+
+    if (parentId) {
+      const parentReview = await Review.findById(parentId).populate("userId", "_id username");
+      if (parentReview && String(parentReview.userId?._id) !== String(userId)) {
+        await Notification.create({
+          recipientId: parentReview.userId._id,
+          senderId: userId,
+          type: "comment",
+          message: `${user?.username || "Un utilisateur"} a repondu a votre avis`,
+          targetId: parentReview._id,
+          targetType: "Review"
+        });
+
+        await User.findByIdAndUpdate(parentReview.userId._id, {
+          $inc: { unreadNotifications: 1 }
+        });
+      }
+    }
 
     const user = await User.findById(userId);
     user.reviews.push(review._id);

@@ -116,13 +116,38 @@
             Aucun avis pour le moment. Sois le premier a publier.
           </div>
           <div v-else class="space-y-3">
-            <ReviewCard
-              v-for="review in reviews"
-              :key="review._id"
-              :review="review"
-              @like="likeReview"
-              @reply="replyToReview"
-            />
+            <div v-for="review in reviews" :key="review._id" class="space-y-2">
+              <ReviewCard
+                :review="review"
+                @like="likeReview"
+                @reply="startReply"
+              />
+
+              <div v-if="activeReplyReviewId === review._id" class="rounded-xl border border-white/10 bg-watchly-secondary p-3">
+                <p class="mb-2 text-xs uppercase tracking-[0.12em] text-watchly-text-secondary">
+                  Repondre a {{ review.userId?.username || "cet avis" }}
+                </p>
+                <textarea
+                  v-model.trim="replyText"
+                  rows="3"
+                  class="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2"
+                  placeholder="Ecris ta reponse..."
+                />
+                <p v-if="replyError" class="mt-2 text-xs text-red-300">{{ replyError }}</p>
+                <div class="mt-3 flex gap-2">
+                  <button
+                    class="rounded-lg bg-watchly-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                    :disabled="replySubmitting"
+                    @click="submitReply(review)"
+                  >
+                    {{ replySubmitting ? "Publication..." : "Publier la reponse" }}
+                  </button>
+                  <button class="rounded-lg bg-white/10 px-3 py-2 text-sm" @click="cancelReply">
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -159,6 +184,10 @@ const userStore = useUserStore();
 const reviews = ref([]);
 const reviewSubmitting = ref(false);
 const reviewError = ref("");
+const activeReplyReviewId = ref(null);
+const replyText = ref("");
+const replyError = ref("");
+const replySubmitting = ref(false);
 const reviewForm = ref({
   rating: 4,
   reviewText: "",
@@ -259,18 +288,32 @@ const submitReview = async () => {
   }
 };
 
-const replyToReview = async (review) => {
-  const text = window.prompt("Votre reponse:");
-  if (!text || !text.trim()) {
+const startReply = (review) => {
+  activeReplyReviewId.value = review._id;
+  replyText.value = "";
+  replyError.value = "";
+};
+
+const cancelReply = () => {
+  activeReplyReviewId.value = null;
+  replyText.value = "";
+  replyError.value = "";
+};
+
+const submitReply = async (review) => {
+  if (!replyText.value.trim()) {
+    replyError.value = "Ta reponse ne peut pas etre vide.";
     return;
   }
 
+  replySubmitting.value = true;
+  replyError.value = "";
   try {
     await api.post("/reviews", {
       movieId: Number(route.params.id),
       parentId: review._id,
       rating: 5,
-      reviewText: text.trim(),
+      reviewText: replyText.value.trim(),
       spoiler: false,
       detailedRatings: {
         scenario: 3,
@@ -279,9 +322,13 @@ const replyToReview = async (review) => {
         rhythm: 3
       }
     });
+
+    cancelReply();
     await loadMoviePage();
   } catch {
-    reviewError.value = "Impossible de publier la reponse.";
+    replyError.value = "Impossible de publier la reponse.";
+  } finally {
+    replySubmitting.value = false;
   }
 };
 </script>

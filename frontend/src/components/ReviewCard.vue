@@ -7,6 +7,11 @@
         <p class="text-xs text-watchly-text-secondary">{{ review.rating }}/5</p>
       </div>
     </header>
+
+    <div v-if="review.movieId" class="text-xs text-watchly-text-secondary">
+      Film #{{ review.movieId }}
+    </div>
+
     <div class="flex flex-wrap gap-2 text-[11px] text-watchly-text-secondary">
       <span class="rounded-full border border-white/10 px-2 py-1">Scenario {{ review.detailedRatings?.scenario || review.rating }}/5</span>
       <span class="rounded-full border border-white/10 px-2 py-1">Acting {{ review.detailedRatings?.acting || review.rating }}/5</span>
