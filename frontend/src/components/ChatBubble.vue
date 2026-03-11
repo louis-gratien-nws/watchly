@@ -31,22 +31,33 @@
             </button>
 
             <div v-if="activeTab === 'chats'" class="space-y-2 overflow-y-auto pr-1">
-              <button
-                v-for="conversation in conversations"
-                :key="conversation._id"
-                class="w-full rounded-xl border px-2 py-2 text-left"
-                :class="selectedConversationId === conversation._id ? 'border-watchly-accent bg-watchly-accent/15' : 'border-white/10 bg-white/5'"
-                @click="selectConversation(conversation)"
-              >
-                <p class="truncate text-xs font-semibold">{{ conversation.friend?.username || 'Ami' }}</p>
-                <p class="mt-1 line-clamp-2 text-[10px] text-watchly-text-secondary">{{ conversation.lastMessage?.text || 'Nouveau chat' }}</p>
-                <span
-                  v-if="conversation.unreadCount"
-                  class="mt-1 inline-flex rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white"
+              <TransitionGroup name="chat-list" tag="div" class="space-y-2">
+                <button
+                  v-for="conversation in conversations"
+                  :key="conversation._id"
+                  class="w-full rounded-xl border px-2 py-2 text-left"
+                  :class="selectedConversationId === conversation._id ? 'border-watchly-accent bg-watchly-accent/15' : 'border-white/10 bg-white/5'"
+                  @click="selectConversation(conversation)"
                 >
-                  {{ conversation.unreadCount > 9 ? '9+' : conversation.unreadCount }}
-                </span>
-              </button>
+                  <div class="flex items-start gap-2">
+                    <img
+                      :src="conversation.friend?.avatar || fallbackAvatar"
+                      :alt="conversation.friend?.username || 'Ami'"
+                      class="h-8 w-8 rounded-full object-cover"
+                    />
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-xs font-semibold">{{ conversation.friend?.username || 'Ami' }}</p>
+                      <p class="mt-1 line-clamp-2 text-[10px] text-watchly-text-secondary">{{ conversation.lastMessage?.text || 'Nouveau chat' }}</p>
+                    </div>
+                  </div>
+                  <span
+                    v-if="conversation.unreadCount"
+                    class="mt-1 inline-flex rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white"
+                  >
+                    {{ conversation.unreadCount > 9 ? '9+' : conversation.unreadCount }}
+                  </span>
+                </button>
+              </TransitionGroup>
 
               <p v-if="!conversations.length" class="px-1 text-[11px] text-watchly-text-secondary">Aucun chat pour le moment.</p>
             </div>
@@ -76,15 +87,45 @@
                 Selectionne un chat ou un ami pour commencer.
               </div>
 
-              <article
-                v-for="message in messages"
-                :key="message._id"
-                class="max-w-[90%] rounded-2xl px-3 py-2 text-xs"
-                :class="isMine(message) ? 'ml-auto bg-watchly-accent text-black' : 'bg-white/10 text-white'"
-              >
-                <p v-if="!isMine(message)" class="mb-1 text-[10px] text-watchly-text-secondary">{{ message.senderId?.username || 'Ami' }}</p>
-                <p class="whitespace-pre-wrap break-words">{{ message.text }}</p>
-              </article>
+              <TransitionGroup name="message-bubble" tag="div" class="space-y-2">
+                <div
+                  v-for="message in messages"
+                  :key="message._id"
+                  class="flex items-end gap-2"
+                  :class="isMine(message) ? 'justify-end' : 'justify-start'"
+                >
+                  <img
+                    v-if="!isMine(message)"
+                    :src="messageAvatar(message)"
+                    :alt="message.senderId?.username || 'Ami'"
+                    class="h-7 w-7 rounded-full object-cover"
+                  />
+
+                  <article
+                    class="max-w-[78%] rounded-2xl px-3 py-2 text-xs"
+                    :class="isMine(message) ? 'bg-watchly-accent text-black' : 'bg-white/10 text-white'"
+                  >
+                    <p v-if="!isMine(message)" class="mb-1 text-[10px] text-watchly-text-secondary">{{ message.senderId?.username || 'Ami' }}</p>
+                    <p class="whitespace-pre-wrap break-words">{{ message.text }}</p>
+                    <p
+                      class="mt-1 text-[10px]"
+                      :class="isMine(message) ? 'text-black/70' : 'text-watchly-text-secondary'"
+                    >
+                      {{ formatTime(message.createdAt) }}
+                      <span v-if="isMine(message) && message._id === lastMineMessageId">
+                        • {{ hasBeenReadByFriend(message) ? 'Lu' : 'Distribue' }}
+                      </span>
+                    </p>
+                  </article>
+
+                  <img
+                    v-if="isMine(message)"
+                    :src="messageAvatar(message)"
+                    alt="Vous"
+                    class="h-7 w-7 rounded-full object-cover"
+                  />
+                </div>
+              </TransitionGroup>
             </div>
 
             <form class="border-t border-white/10 p-2" @submit.prevent="handleSend">
@@ -111,7 +152,7 @@
     </Transition>
 
     <button
-      class="relative h-14 w-14 rounded-full bg-watchly-accent text-black shadow-[0_18px_40px_rgba(0,168,255,0.4)] transition hover:scale-105"
+      class="chat-fab relative h-14 w-14 rounded-full bg-watchly-accent text-black shadow-[0_18px_40px_rgba(0,168,255,0.4)] transition hover:scale-105"
       aria-label="Ouvrir la messagerie"
       @click="toggleOpen"
     >
@@ -143,6 +184,7 @@ const messages = ref([]);
 const draft = ref("");
 const sending = ref(false);
 const messagesContainer = ref(null);
+const fallbackAvatar = "https://placehold.co/80x80/0f172a/f8fafc?text=U";
 
 let conversationsInterval = null;
 let messagesInterval = null;
@@ -157,9 +199,48 @@ const activeConversation = computed(() =>
   conversations.value.find((conversation) => conversation._id === selectedConversationId.value) || null
 );
 
+const activeFriendId = computed(() => activeConversation.value?.friend?._id || "");
+
+const lastMineMessageId = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i -= 1) {
+    if (isMine(messages.value[i])) {
+      return messages.value[i]._id;
+    }
+  }
+  return "";
+});
+
 const activeFriendName = computed(() => activeConversation.value?.friend?.username || "Messagerie");
 
 const isMine = (message) => String(message.senderId?._id || message.senderId) === String(auth.user?._id);
+
+const messageAvatar = (message) => {
+  if (isMine(message)) {
+    return auth.user?.avatar || fallbackAvatar;
+  }
+  return message.senderId?.avatar || activeConversation.value?.friend?.avatar || fallbackAvatar;
+};
+
+const formatTime = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  return date.toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+};
+
+const hasBeenReadByFriend = (message) => {
+  if (!isMine(message) || !activeFriendId.value) {
+    return false;
+  }
+
+  const readBy = Array.isArray(message.readBy) ? message.readBy : [];
+  return readBy.some((id) => String(id?._id || id) === String(activeFriendId.value));
+};
 
 const scrollToBottom = async () => {
   await nextTick();
@@ -283,12 +364,50 @@ onUnmounted(() => {
 <style scoped>
 .chat-panel-enter-active,
 .chat-panel-leave-active {
-  transition: opacity 180ms ease, transform 180ms ease;
+  transition: opacity 280ms cubic-bezier(0.22, 1, 0.36, 1), transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .chat-panel-enter-from,
 .chat-panel-leave-to {
   opacity: 0;
-  transform: translateY(10px) scale(0.98);
+  transform: translateY(18px) scale(0.94);
+}
+
+.message-bubble-enter-active,
+.message-bubble-leave-active {
+  transition: all 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.message-bubble-enter-from,
+.message-bubble-leave-to {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+}
+
+.chat-list-enter-active,
+.chat-list-leave-active {
+  transition: all 180ms ease;
+}
+
+.chat-list-enter-from,
+.chat-list-leave-to {
+  opacity: 0;
+  transform: translateX(-6px);
+}
+
+.chat-fab {
+  animation: breathe 2.8s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 18px 40px rgba(0, 168, 255, 0.4);
+  }
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 22px 48px rgba(0, 168, 255, 0.52);
+  }
 }
 </style>
