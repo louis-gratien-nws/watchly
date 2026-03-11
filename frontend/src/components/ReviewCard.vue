@@ -29,7 +29,7 @@
 
     <div v-if="review.replies?.length" class="space-y-2 rounded-xl border border-white/10 bg-black/20 p-3">
       <p class="text-xs uppercase tracking-[0.15em] text-watchly-text-secondary">Reponses</p>
-      <div v-for="reply in review.replies" :key="reply._id" class="rounded-lg border border-white/10 bg-black/30 p-2">
+      <div v-for="reply in sortedReplies" :key="reply._id" class="rounded-lg border border-white/10 bg-black/30 p-2">
         <p class="text-xs font-semibold">{{ reply.userId?.username || "Utilisateur" }}</p>
         <p class="text-sm text-watchly-text-secondary">{{ reply.reviewText }}</p>
       </div>
@@ -72,6 +72,21 @@ const showSpoiler = ref(false);
 const isLiked = ref(false);
 const likesCount = ref(props.review.likes?.length || 0);
 const liking = ref(false);
+
+const sortedReplies = computed(() => {
+  const replies = Array.isArray(props.review?.replies) ? [...props.review.replies] : [];
+
+  return replies.sort((a, b) => {
+    const timeA = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+
+    if (timeA !== timeB) {
+      return timeA - timeB;
+    }
+
+    return String(a?._id || "").localeCompare(String(b?._id || ""));
+  });
+});
 
 const toggleLike = async () => {
   if (!auth.user) {

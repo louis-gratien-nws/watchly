@@ -4,6 +4,32 @@ const Activity = require("../models/Activity");
 const Notification = require("../models/Notification");
 const { calculateAchievements } = require("../utils/calculateAchievements");
 
+const getStableTimestamp = (review) => {
+  const createdAt = review?.createdAt ? new Date(review.createdAt).getTime() : NaN;
+  if (!Number.isNaN(createdAt)) {
+    return createdAt;
+  }
+
+  // Fallback to ObjectId timestamp for legacy/malformed dates.
+  try {
+    return review?._id?.getTimestamp?.()?.getTime?.() || 0;
+  } catch {
+    return 0;
+  }
+};
+
+const sortRepliesOldestFirst = (a, b) => {
+  const timeA = getStableTimestamp(a);
+  const timeB = getStableTimestamp(b);
+
+  if (timeA !== timeB) {
+    return timeA - timeB;
+  }
+
+  // Deterministic tie-breaker when timestamps are equal.
+  return String(a?._id || "").localeCompare(String(b?._id || ""));
+};
+
 const createReview = async (req, res, next) => {
   try {
     const {
@@ -89,7 +115,9 @@ const getMovieReviews = async (req, res, next) => {
 
     const threaded = parents.map((parent) => ({
       ...parent.toObject(),
-      replies: children.filter((child) => String(child.parentId) === String(parent._id))
+      replies: children
+        .filter((child) => String(child.parentId) === String(parent._id))
+        .sort(sortRepliesOldestFirst)
     }));
 
     return res.json(threaded);
