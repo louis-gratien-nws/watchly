@@ -28,9 +28,13 @@ const signToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
 };
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const register = async (req, res, next) => {
   try {
-    const { username, email, password } = req.body;
+    const username = (req.body?.username || "").trim();
+    const email = (req.body?.email || "").trim().toLowerCase();
+    const password = req.body?.password;
 
     if (!username || !email || !password) {
       return res.status(400).json({ message: "username, email and password required" });
@@ -70,13 +74,19 @@ const register = async (req, res, next) => {
 
 const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const identifier = (req.body?.email || req.body?.identifier || "").trim();
+    const password = req.body?.password;
 
-    if (!email || !password) {
-      return res.status(400).json({ message: "email and password required" });
+    if (!identifier || !password) {
+      return res.status(400).json({ message: "email/username and password required" });
     }
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({
+      $or: [
+        { email: identifier.toLowerCase() },
+        { username: { $regex: `^${escapeRegex(identifier)}$`, $options: "i" } }
+      ]
+    });
     if (!user) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
