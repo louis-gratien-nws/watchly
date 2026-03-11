@@ -3,6 +3,7 @@ const Review = require("../models/Review");
 const Activity = require("../models/Activity");
 const Notification = require("../models/Notification");
 const bcrypt = require("bcrypt");
+const { fetchTmdb } = require("../services/tmdbService");
 const { calculateAchievements } = require("../utils/calculateAchievements");
 
 const publicUserSelect = "username avatar bio stats level xp";
@@ -307,6 +308,169 @@ const getFriendsOverview = async (req, res, next) => {
   }
 };
 
+const mapGenrePreference = (user) => {
+  const stats = user?.stats?.genreStats || [];
+  return stats.reduce((acc, item) => {
+    if (!item?.genreId) {
+      return acc;
+    }
+
+    const count = Number(item.count || 0);
+    if (count <= 0) {
+      return acc;
+    }
+
+    acc.set(Number(item.genreId), {
+      genreId: Number(item.genreId),
+      genreName: item.genreName || `Genre ${item.genreId}`,
+      count
+    });
+    return acc;
+  }, new Map());
+};
+
+const clampPercent = (value) => Math.max(0, Math.min(100, Math.round(value)));
+
+const getFriendCompatibility = async (req, res, next) => {
+  try {
+    const friendId = req.params.id;
+
+    if (String(friendId) === String(req.user._id)) {
+      return res.status(400).json({ message: "Cannot compare with yourself" });
+    }
+
+    const [currentUser, friend, currentReviews, friendReviews] = await Promise.all([
+      User.findById(req.user._id).select("username watched stats friends"),
+      User.findById(friendId).select("username watched stats friends avatar"),
+      Review.find({ userId: req.user._id }).select("movieId rating").lean(),
+      Review.find({ userId: friendId }).select("movieId rating").lean()
+    ]);
+
+    if (!friend) {
+      return res.status(404).json({ message: "Friend not found" });
+    }
+
+    const areFriends = (currentUser.friends || []).some((id) => String(id) === String(friendId));
+    if (!areFriends) {
+      return res.status(403).json({ message: "Compatibility is only available with friends" });
+    }
+
+    const myWatched = new Set((currentUser.watched || []).map((id) => Number(id)));
+    const friendWatched = new Set((friend.watched || []).map((id) => Number(id)));
+    const commonMovies = [...myWatched].filter((movieId) => friendWatched.has(movieId));
+    const watchedUnionSize = new Set([...myWatched, ...friendWatched]).size;
+
+    const movieOverlapScore = watchedUnionSize
+      ? clampPercent((commonMovies.length / watchedUnionSize) * 100)
+      : 0;
+
+    const myRatingsMap = new Map(currentReviews.map((review) => [Number(review.movieId), Number(review.rating)]));
+    const friendRatingsMap = new Map(friendReviews.map((review) => [Number(review.movieId), Number(review.rating)]));
+
+    const commonRated = [...myRatingsMap.keys()].filter((movieId) => friendRatingsMap.has(movieId));
+    const ratingDiffAverage = commonRated.length
+      ? commonRated.reduce((sum, movieId) => {
+          return sum + Math.abs(myRatingsMap.get(movieId) - friendRatingsMap.get(movieId));
+        }, 0) / commonRated.length
+      : 2.5;
+    const ratingScore = clampPercent((1 - ratingDiffAverage / 5) * 100);
+
+    const myGenres = mapGenrePreference(currentUser);
+    const friendGenres = mapGenrePreference(friend);
+    const genreIds = new Set([...myGenres.keys(), ...friendGenres.keys()]);
+
+    let genreIntersection = 0;
+    let genreUnion = 0;
+
+    for (const genreId of genreIds) {
+      const mine = myGenres.get(genreId)?.count || 0;
+      const theirs = friendGenres.get(genreId)?.count || 0;
+      genreIntersection += Math.min(mine, theirs);
+      genreUnion += Math.max(mine, theirs);
+    }
+
+    const genreScore = genreUnion ? clampPercent((genreIntersection / genreUnion) * 100) : 0;
+
+    const overallScore = clampPercent(
+      movieOverlapScore * 0.35 + genreScore * 0.35 + ratingScore * 0.3
+    );
+
+    const topGenreCandidates = [...genreIds]
+      .map((genreId) => {
+        const mine = myGenres.get(genreId);
+        const theirs = friendGenres.get(genreId);
+        return {
+          genreId,
+          genreName: mine?.genreName || theirs?.genreName || `Genre ${genreId}`,
+          combinedScore: (mine?.count || 0) + (theirs?.count || 0)
+        };
+      })
+      .sort((a, b) => b.combinedScore - a.combinedScore)
+      .slice(0, 3);
+
+    let idealMovie = null;
+    if (topGenreCandidates.length) {
+      try {
+        const discover = await fetchTmdb("/discover/movie", {
+          with_genres: topGenreCandidates.map((g) => g.genreId).join(","),
+          sort_by: "vote_average.desc",
+          "vote_count.gte": 250,
+          page: 1,
+          language: "fr-FR",
+          include_adult: false
+        });
+
+        const firstUnwatched = (discover.results || []).find(
+          (movie) => !myWatched.has(Number(movie.id)) && !friendWatched.has(Number(movie.id))
+        );
+
+        if (firstUnwatched) {
+          idealMovie = {
+            id: firstUnwatched.id,
+            title: firstUnwatched.title,
+            poster_path: firstUnwatched.poster_path,
+            vote_average: firstUnwatched.vote_average,
+            release_date: firstUnwatched.release_date
+          };
+        }
+      } catch (tmdbError) {
+        idealMovie = null;
+      }
+    }
+
+    return res.json({
+      friend: {
+        _id: friend._id,
+        username: friend.username,
+        avatar: friend.avatar
+      },
+      score: overallScore,
+      breakdown: {
+        genres: genreScore,
+        ratings: ratingScore,
+        commonMovies: movieOverlapScore
+      },
+      common: {
+        watchedCount: commonMovies.length,
+        ratedCount: commonRated.length,
+        sampleMovieIds: commonMovies.slice(0, 8)
+      },
+      idealNight: {
+        topGenres: topGenreCandidates,
+        movieSuggestion: idealMovie,
+        vibeLabel:
+          overallScore >= 80
+            ? "Duet cinephile"
+            : overallScore >= 60
+              ? "Bon duo popcorn"
+              : "Exploration de nouveaux genres"
+      }
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 const sendFriendRequest = async (req, res, next) => {
   try {
     const targetId = req.params.id;
@@ -520,6 +684,7 @@ module.exports = {
   getFeed,
   searchUsers,
   getFriendsOverview,
+  getFriendCompatibility,
   sendFriendRequest,
   acceptFriendRequest,
   rejectFriendRequest,

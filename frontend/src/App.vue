@@ -8,15 +8,19 @@
         </Transition>
       </RouterView>
     </main>
+    <ChatBubble v-if="auth.isAuthenticated && !route.meta.hideNavbar" />
   </div>
 </template>
 
 <script setup>
 import { RouterView, useRoute } from "vue-router";
 import Navbar from "./components/Navbar.vue";
+import ChatBubble from "./components/ChatBubble.vue";
 import { onMounted } from "vue";
+import { useAuthStore } from "./stores/authStore";
 
 const route = useRoute();
+const auth = useAuthStore();
 
 onMounted(() => {
   // Ensure theme is set on mount

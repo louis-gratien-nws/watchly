@@ -11,6 +11,7 @@ const {
   getFeed,
   searchUsers,
   getFriendsOverview,
+  getFriendCompatibility,
   sendFriendRequest,
   acceptFriendRequest,
   rejectFriendRequest,
@@ -23,6 +24,7 @@ const router = express.Router();
 router.get("/feed/activity", authMiddleware, getFeed);
 router.get("/search", authMiddleware, searchUsers);
 router.get("/friends/overview", authMiddleware, getFriendsOverview);
+router.get("/friends/compatibility/:id", authMiddleware, getFriendCompatibility);
 router.post("/friends/request/:id", authMiddleware, sendFriendRequest);
 router.post("/friends/accept/:id", authMiddleware, acceptFriendRequest);
 router.post("/friends/reject/:id", authMiddleware, rejectFriendRequest);

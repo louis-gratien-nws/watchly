@@ -25,6 +25,10 @@ export const socialService = {
     return api.get("/social/leaderboard", { params: { type, limit } });
   },
 
+  getFriendCompatibility(friendId) {
+    return api.get(`/users/friends/compatibility/${friendId}`);
+  },
+
   getNotifications() {
     return api.get("/social/notifications");
   },

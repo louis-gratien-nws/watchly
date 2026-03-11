@@ -199,12 +199,97 @@
             <RouterLink :to="`/profile/${person._id}`" class="rounded-xl bg-white/10 px-3 py-2 text-sm">
               Voir profil
             </RouterLink>
+            <button class="rounded-xl bg-watchly-accent/90 px-3 py-2 text-sm font-semibold text-black" @click="openChat(person._id)">
+              Message
+            </button>
+            <button class="rounded-xl border border-watchly-accent/30 bg-watchly-accent/10 px-3 py-2 text-sm" @click="loadCompatibility(person)">
+              Match gouts
+            </button>
             <button class="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300" @click="removeFriend(person._id)">
               Retirer
             </button>
           </div>
         </article>
       </div>
+    </section>
+
+    <section class="rounded-2xl border border-white/10 bg-watchly-secondary p-4">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 class="font-display text-xl font-bold">Match de gouts</h2>
+          <p class="text-sm text-watchly-text-secondary">Calcule ta compatibilite avec un ami et genere une soiree ideale.</p>
+        </div>
+        <span v-if="compatibilityLoading" class="text-xs text-watchly-text-secondary">Calcul en cours...</span>
+      </div>
+
+      <div v-if="compatibilityError" class="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        {{ compatibilityError }}
+      </div>
+
+      <div v-else-if="compatibility" class="space-y-4">
+        <article class="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <img :src="compatibility.friend.avatar" :alt="compatibility.friend.username" class="h-12 w-12 rounded-full object-cover" />
+              <div>
+                <p class="font-semibold">{{ compatibility.friend.username }}</p>
+                <p class="text-xs text-watchly-text-secondary">{{ compatibility.idealNight.vibeLabel }}</p>
+              </div>
+            </div>
+            <div class="text-right">
+              <p class="text-xs text-watchly-text-secondary">Compatibilite</p>
+              <p class="font-display text-3xl font-extrabold text-watchly-accent">{{ compatibility.score }}%</p>
+            </div>
+          </div>
+
+          <div class="mt-4 grid gap-2 sm:grid-cols-3">
+            <div class="rounded-xl border border-white/10 bg-black/20 p-3">
+              <p class="text-xs text-watchly-text-secondary">Genres</p>
+              <p class="text-lg font-bold">{{ compatibility.breakdown.genres }}%</p>
+            </div>
+            <div class="rounded-xl border border-white/10 bg-black/20 p-3">
+              <p class="text-xs text-watchly-text-secondary">Notes</p>
+              <p class="text-lg font-bold">{{ compatibility.breakdown.ratings }}%</p>
+            </div>
+            <div class="rounded-xl border border-white/10 bg-black/20 p-3">
+              <p class="text-xs text-watchly-text-secondary">Films communs</p>
+              <p class="text-lg font-bold">{{ compatibility.breakdown.commonMovies }}%</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="rounded-2xl border border-white/10 bg-black/20 p-4">
+          <h3 class="font-semibold">Soiree ideale auto</h3>
+          <p class="mt-1 text-sm text-watchly-text-secondary">
+            Top genres communs:
+            {{ compatibility.idealNight.topGenres.map((genre) => genre.genreName).join(", ") || "A definir" }}
+          </p>
+
+          <div v-if="compatibility.idealNight.movieSuggestion" class="mt-3 flex gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
+            <img
+              :src="moviePoster(compatibility.idealNight.movieSuggestion.poster_path)"
+              :alt="compatibility.idealNight.movieSuggestion.title"
+              class="h-24 w-16 rounded-lg object-cover"
+            />
+            <div>
+              <p class="font-semibold">{{ compatibility.idealNight.movieSuggestion.title }}</p>
+              <p class="text-xs text-watchly-text-secondary">Note TMDB: {{ compatibility.idealNight.movieSuggestion.vote_average?.toFixed?.(1) || compatibility.idealNight.movieSuggestion.vote_average }}</p>
+              <p class="text-xs text-watchly-text-secondary">Sortie: {{ compatibility.idealNight.movieSuggestion.release_date || "n/a" }}</p>
+              <RouterLink
+                :to="`/movie/${compatibility.idealNight.movieSuggestion.id}`"
+                class="mt-2 inline-block rounded-lg bg-watchly-accent px-3 py-1 text-xs font-semibold text-black"
+              >
+                Voir le film
+              </RouterLink>
+            </div>
+          </div>
+          <p v-else class="mt-3 text-sm text-watchly-text-secondary">Pas de suggestion automatique pour le moment, mais votre vibe est prete.</p>
+        </article>
+      </div>
+
+      <p v-else class="text-sm text-watchly-text-secondary">
+        Clique sur "Match gouts" dans la liste de tes amis pour lancer le calcul.
+      </p>
     </section>
   </section>
 </template>
@@ -213,9 +298,13 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 import { useUserStore } from "../stores/userStore";
+import { socialService } from "../services/socialService";
 
 const userStore = useUserStore();
 const search = ref("");
+const compatibility = ref(null);
+const compatibilityLoading = ref(false);
+const compatibilityError = ref("");
 
 const normalizedSearch = computed(() => search.value.trim());
 
@@ -259,6 +348,31 @@ const cancelRequest = async (userId) => {
 const removeFriend = async (userId) => {
   await userStore.removeFriend(userId);
   await refreshSearch();
+};
+
+const moviePoster = (path) => {
+  if (!path) {
+    return "https://placehold.co/200x300/0f172a/f8fafc?text=No+Poster";
+  }
+  return `https://image.tmdb.org/t/p/w342${path}`;
+};
+
+const loadCompatibility = async (person) => {
+  compatibilityLoading.value = true;
+  compatibilityError.value = "";
+
+  try {
+    const { data } = await socialService.getFriendCompatibility(person._id);
+    compatibility.value = data;
+  } catch (error) {
+    compatibilityError.value = error?.response?.data?.message || "Impossible de calculer la compatibilite.";
+  } finally {
+    compatibilityLoading.value = false;
+  }
+};
+
+const openChat = (friendId) => {
+  window.dispatchEvent(new CustomEvent("open-watchly-chat", { detail: { friendId } }));
 };
 
 watch(search, refreshSearch);
