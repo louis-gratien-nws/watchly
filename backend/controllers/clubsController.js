@@ -5,9 +5,11 @@ const { emitClubEventToUsers, subscribeUserClubEvents } = require("../services/c
 
 const createInviteCode = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 
-const isClubMember = (club, userId) => club.members.some((member) => String(member.userId) === String(userId));
+const normalizeUserId = (value) => String(value?._id || value);
 
-const getMember = (club, userId) => club.members.find((member) => String(member.userId) === String(userId));
+const isClubMember = (club, userId) => club.members.some((member) => normalizeUserId(member.userId) === normalizeUserId(userId));
+
+const getMember = (club, userId) => club.members.find((member) => normalizeUserId(member.userId) === normalizeUserId(userId));
 
 const canManage = (club, userId) => {
   const member = getMember(club, userId);
@@ -61,7 +63,7 @@ const generateUniqueInviteCode = async () => {
   throw new Error("Could not generate unique invite code");
 };
 
-const toObjectIdList = (club) => club.members.map((member) => String(member.userId));
+const toObjectIdList = (club) => club.members.map((member) => normalizeUserId(member.userId));
 
 const clubNotificationQuery = {
   targetType: "Club",
@@ -787,7 +789,6 @@ const transferOwnership = async (req, res, next) => {
     }
 
     const targetUser = await User.findById(target.userId).select("username").lean();
-    const targetPreviousRole = target.role;
 
     owner.role = previousOwnerRole;
     target.role = "owner";
