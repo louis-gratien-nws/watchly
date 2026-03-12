@@ -49,6 +49,7 @@ app.use("/api/movie-night", require("./routes/movieNightRoutes"));
 app.use("/api/social", require("./routes/socialRoutes"));
 app.use("/api/likes", require("./routes/likesRoutes"));
 app.use("/api/chats", require("./routes/chatRoutes"));
+app.use("/api/clubs", require("./routes/clubRoutes"));
 
 app.use(errorHandler);
 

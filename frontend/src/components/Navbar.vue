@@ -27,6 +27,17 @@
           </li>
         </ul>
 
+        <RouterLink
+          v-if="isAuthenticated"
+          to="/clubs"
+          class="relative inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-watchly-text-secondary transition hover:border-watchly-accent/60 hover:text-white"
+        >
+          Clubs
+          <span v-if="clubsUnreadCount > 0" class="rounded-full bg-watchly-accent/20 px-2 py-0.5 text-[10px] font-bold text-watchly-accent">
+            {{ clubsUnreadCount > 99 ? '99+' : clubsUnreadCount }}
+          </span>
+        </RouterLink>
+
         <div class="relative">
           <button
             ref="exploreButtonRef"
@@ -54,7 +65,10 @@
                 @click="closeExplore"
               >
                 <span>{{ item.label }}</span>
-                <span class="text-[10px] uppercase tracking-[0.1em] text-watchly-accent">{{ item.tag }}</span>
+                <span v-if="item.to === '/clubs' && clubsUnreadCount > 0" class="rounded-full bg-watchly-accent/20 px-2 py-0.5 text-[10px] font-bold text-watchly-accent">
+                  {{ clubsUnreadCount > 99 ? '99+' : clubsUnreadCount }}
+                </span>
+                <span v-else class="text-[10px] uppercase tracking-[0.1em] text-watchly-accent">{{ item.tag }}</span>
               </RouterLink>
             </div>
           </Transition>
@@ -182,10 +196,13 @@
                 v-for="item in exploreMenu"
                 :key="`mobile-explore-${item.to}`"
                 :to="item.to"
-                class="block rounded-lg px-2 py-2 text-sm text-watchly-text-secondary hover:bg-white/5 hover:text-white"
+                class="flex items-center justify-between rounded-lg px-2 py-2 text-sm text-watchly-text-secondary hover:bg-white/5 hover:text-white"
                 @click="mobileNavOpen = false"
               >
-                {{ item.label }}
+                <span>{{ item.label }}</span>
+                <span v-if="item.to === '/clubs' && clubsUnreadCount > 0" class="rounded-full bg-watchly-accent/20 px-2 py-0.5 text-[10px] font-bold text-watchly-accent">
+                  {{ clubsUnreadCount > 99 ? '99+' : clubsUnreadCount }}
+                </span>
               </RouterLink>
             </div>
           </Transition>
@@ -201,6 +218,7 @@ import { RouterLink, useRouter } from "vue-router";
 import UserAvatar from "./UserAvatar.vue";
 import NotificationBell from "./NotificationBell.vue";
 import { useAuthStore } from "../stores/authStore";
+import { clubService } from "../services/clubService";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -216,6 +234,7 @@ const exploreMenu = [
   { label: "Soiree film", to: "/movie-night", tag: "Social" },
   { label: "Planning", to: "/planning", tag: "Plan" },
   { label: "Listes collab", to: "/collab-lists", tag: "Team" },
+  { label: "Clubs prives", to: "/clubs", tag: "Club" },
   { label: "Activite", to: "/activity", tag: "Feed" },
   { label: "Statistiques", to: "/statistics", tag: "Stats" },
   { label: "Classement", to: "/leaderboard", tag: "Top" }
@@ -236,8 +255,67 @@ const menuRef = ref(null);
 const menuButtonRef = ref(null);
 const exploreRef = ref(null);
 const exploreButtonRef = ref(null);
+const clubsUnreadCount = ref(0);
+const clubsStreamConnected = ref(false);
+let clubsStreamCleanup = null;
+let clubsStreamReconnectTimer = null;
 const isAuthenticated = computed(() => auth.isAuthenticated && Boolean(auth.user));
 const pendingFriendRequestsCount = computed(() => auth.user?.friendRequestsReceived?.length || 0);
+
+const loadGlobalClubsUnread = async () => {
+  if (!isAuthenticated.value) {
+    clubsUnreadCount.value = 0;
+    return;
+  }
+
+  try {
+    const { data } = await clubService.getGlobalUnreadCount();
+    clubsUnreadCount.value = Number(data?.unreadCount || 0);
+  } catch {
+    clubsUnreadCount.value = 0;
+  }
+};
+
+const connectGlobalClubsStream = async () => {
+  if (!isAuthenticated.value) {
+    clubsStreamConnected.value = false;
+    return;
+  }
+
+  if (clubsStreamCleanup) {
+    clubsStreamCleanup();
+    clubsStreamCleanup = null;
+  }
+
+  clubsStreamCleanup = await clubService.openEventStream(
+    (eventName, payload) => {
+      if (eventName === "ready") {
+        clubsStreamConnected.value = true;
+        loadGlobalClubsUnread();
+        return;
+      }
+
+      if (eventName !== "club-event") return;
+      if (!payload?.clubId) return;
+
+      const myId = auth.user?._id || auth.user?.id;
+      if (myId && payload.actorId && String(payload.actorId) === String(myId)) {
+        return;
+      }
+
+      clubsUnreadCount.value += 1;
+    },
+    () => {
+      clubsStreamConnected.value = false;
+      if (clubsStreamReconnectTimer) {
+        clearTimeout(clubsStreamReconnectTimer);
+      }
+      clubsStreamReconnectTimer = setTimeout(() => {
+        connectGlobalClubsStream();
+      }, 2500);
+    }
+  );
+};
 
 const closeMenu = () => {
   menuOpen.value = false;
@@ -288,11 +366,15 @@ const logout = () => {
 
 onMounted(() => {
   auth.fetchMe();
+  loadGlobalClubsUnread();
+  connectGlobalClubsStream();
   document.addEventListener("click", onDocumentClick);
   document.addEventListener("keydown", onEscape);
 });
 
 onUnmounted(() => {
+  if (clubsStreamCleanup) clubsStreamCleanup();
+  if (clubsStreamReconnectTimer) clearTimeout(clubsStreamReconnectTimer);
   document.removeEventListener("click", onDocumentClick);
   document.removeEventListener("keydown", onEscape);
 });

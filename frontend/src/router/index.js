@@ -18,6 +18,7 @@ import CollaborativeListsPage from "../pages/CollaborativeListsPage.vue";
 import StatisticsPage from "../pages/StatisticsPage.vue";
 import LeaderboardPage from "../pages/LeaderboardPage.vue";
 import FriendsPage from "../pages/FriendsPage.vue";
+import ClubsPage from "../pages/ClubsPage.vue";
 
 const routes = [
   { path: "/login", name: "login", component: LoginPage, meta: { public: true, hideNavbar: true } },
@@ -28,6 +29,7 @@ const routes = [
   { path: "/discover", name: "discover", component: DiscoverPage },
   { path: "/my-list", name: "my-list", component: WatchlistPage },
   { path: "/friends", name: "friends", component: FriendsPage },
+  { path: "/clubs", name: "clubs", component: ClubsPage },
   { path: "/profile", name: "profile", component: ProfilePage },
   { path: "/profile/:id", name: "profile-detail", component: ProfileDetailPage },
   { path: "/settings", name: "settings", component: SettingsPage },
